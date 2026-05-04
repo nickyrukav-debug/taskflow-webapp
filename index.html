@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+<title>TaskFlow</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: var(--tg-theme-bg-color, #fff);
+    --bg2: var(--tg-theme-secondary-bg-color, #f1f1f1);
+    --text: var(--tg-theme-text-color, #111);
+    --hint: var(--tg-theme-hint-color, #888);
+    --link: var(--tg-theme-link-color, #2AABEE);
+    --btn: var(--tg-theme-button-color, #2AABEE);
+    --btn-text: var(--tg-theme-button-text-color, #fff);
+    --radius: 10px;
+  }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg2); color: var(--text); min-height: 100vh; }
+
+  .topbar { background: var(--bg); padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; border-bottom: 0.5px solid rgba(0,0,0,0.1); position: sticky; top: 0; z-index: 10; }
+  .topbar-title { font-size: 16px; font-weight: 600; }
+  .topbar-sub { font-size: 12px; color: var(--hint); margin-top: 1px; }
+  .btn-add { background: var(--btn); color: var(--btn-text); border: none; border-radius: 8px; padding: 7px 14px; font-size: 13px; font-weight: 600; cursor: pointer; }
+
+  .tabs { display: flex; background: var(--bg); padding: 0 12px; border-bottom: 0.5px solid rgba(0,0,0,0.08); overflow-x: auto; }
+  .tab { padding: 10px 14px; font-size: 13px; color: var(--hint); border-bottom: 2px solid transparent; white-space: nowrap; cursor: pointer; transition: all 0.15s; }
+  .tab.active { color: var(--btn); border-bottom-color: var(--btn); font-weight: 600; }
+
+  .kanban { display: flex; gap: 12px; padding: 12px; overflow-x: auto; min-height: calc(100vh - 100px); align-items: flex-start; }
+  .kanban::-webkit-scrollbar { height: 0; }
+  .col { min-width: 200px; flex-shrink: 0; }
+  .col-head { font-size: 11px; font-weight: 700; color: var(--hint); text-transform: uppercase; letter-spacing: 0.06em; padding: 4px 2px 8px; display: flex; justify-content: space-between; align-items: center; }
+  .col-count { background: var(--bg); border-radius: 10px; padding: 1px 7px; font-size: 11px; }
+  .col-cards { display: flex; flex-direction: column; gap: 8px; }
+
+  .card { background: var(--bg); border-radius: var(--radius); padding: 12px; cursor: pointer; border: 0.5px solid rgba(0,0,0,0.08); transition: opacity 0.1s; }
+  .card:active { opacity: 0.7; }
+  .card.done { opacity: 0.5; }
+  .card-title { font-size: 13px; font-weight: 500; line-height: 1.4; margin-bottom: 8px; }
+  .card-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .badge { font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 8px; }
+  .badge-high { background: #FEECEC; color: #c0392b; }
+  .badge-medium { background: #FEF9EC; color: #e67e22; }
+  .badge-low { background: #EAFAF1; color: #27ae60; }
+  .due { font-size: 11px; color: var(--hint); }
+  .due.overdue { color: #e74c3c; font-weight: 600; }
+  .avatar { width: 20px; height: 20px; border-radius: 50%; background: var(--btn); color: var(--btn-text); display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 700; margin-left: auto; }
+
+  .add-card { display: flex; align-items: center; gap: 6px; padding: 9px; border-radius: var(--radius); border: 1px dashed rgba(0,0,0,0.15); cursor: pointer; color: var(--hint); font-size: 13px; margin-top: 4px; }
+  .add-card:active { background: var(--bg); }
+
+  .list-view { padding: 12px; display: flex; flex-direction: column; gap: 6px; }
+  .list-item { background: var(--bg); border-radius: var(--radius); padding: 12px; display: flex; align-items: center; gap: 10px; cursor: pointer; border: 0.5px solid rgba(0,0,0,0.06); }
+  .list-item:active { opacity: 0.7; }
+  .prio-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .prio-dot.high { background: #e74c3c; }
+  .prio-dot.medium { background: #e67e22; }
+  .prio-dot.low { background: #27ae60; }
+  .list-info { flex: 1; min-width: 0; }
+  .list-title { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .list-sub { font-size: 11px; color: var(--hint); margin-top: 2px; }
+  .status-pill { font-size: 10px; font-weight: 600; padding: 3px 8px; border-radius: 8px; white-space: nowrap; }
+  .s-todo { background: rgba(0,0,0,0.07); color: var(--hint); }
+  .s-in_progress { background: #E6F1FB; color: #185FA5; }
+  .s-review { background: #EEEDFE; color: #534AB7; }
+  .s-done { background: #EAF3DE; color: #3B6D11; }
+
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 100; align-items: flex-end; }
+  .modal-overlay.open { display: flex; }
+  .modal { background: var(--bg); border-radius: 16px 16px 0 0; width: 100%; max-height: 90vh; overflow-y: auto; padding-bottom: env(safe-area-inset-bottom); }
+  .modal-handle { width: 36px; height: 4px; background: rgba(0,0,0,0.15); border-radius: 2px; margin: 10px auto 0; }
+  .modal-header { padding: 14px 16px 10px; display: flex; justify-content: space-between; align-items: center; border-bottom: 0.5px solid rgba(0,0,0,0.08); }
+  .modal-title { font-size: 16px; font-weight: 600; }
+  .modal-close { background: none; border: none; font-size: 20px; color: var(--hint); cursor: pointer; line-height: 1; padding: 0 4px; }
+  .modal-body { padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+  .field-label { font-size: 12px; font-weight: 600; color: var(--hint); margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.04em; }
+  .field-input { width: 100%; padding: 10px 12px; border-radius: 10px; border: 0.5px solid rgba(0,0,0,0.15); background: var(--bg2); color: var(--text); font-size: 14px; font-family: inherit; }
+  .field-input:focus { outline: none; border-color: var(--btn); }
+  .field-textarea { width: 100%; padding: 10px 12px; border-radius: 10px; border: 0.5px solid rgba(0,0,0,0.15); background: var(--bg2); color: var(--text); font-size: 14px; font-family: inherit; resize: none; min-height: 80px; }
+  .field-textarea:focus { outline: none; border-color: var(--btn); }
+  .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .field-select { width: 100%; padding: 10px 12px; border-radius: 10px; border: 0.5px solid rgba(0,0,0,0.15); background: var(--bg2); color: var(--text); font-size: 14px; font-family: inherit; appearance: none; }
+  .tg-note { background: #E6F1FB; border-radius: 10px; padding: 10px 12px; font-size: 12px; color: #185FA5; line-height: 1.5; }
+  .btn-submit { background: var(--btn); color: var(--btn-text); border: none; border-radius: 10px; padding: 13px; width: 100%; font-size: 15px; font-weight: 600; cursor: pointer; font-family: inherit; margin-top: 4px; }
+
+  .comments { border-top: 0.5px solid rgba(0,0,0,0.08); padding-top: 12px; }
+  .comments-title { font-size: 12px; font-weight: 700; color: var(--hint); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 10px; }
+  .comment { display: flex; gap: 8px; margin-bottom: 10px; }
+  .c-avatar { width: 28px; height: 28px; border-radius: 50%; background: var(--btn); color: var(--btn-text); display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; flex-shrink: 0; }
+  .c-bubble { background: var(--bg2); border-radius: 0 10px 10px 10px; padding: 8px 10px; flex: 1; }
+  .c-author { font-size: 11px; font-weight: 700; }
+  .c-text { font-size: 13px; color: var(--text); margin-top: 2px; }
+  .c-input-row { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
+  .c-input { flex: 1; padding: 9px 12px; border-radius: 20px; border: 0.5px solid rgba(0,0,0,0.15); background: var(--bg2); font-size: 13px; font-family: inherit; color: var(--text); }
+  .c-input:focus { outline: none; border-color: var(--btn); }
+  .c-send { background: var(--btn); color: var(--btn-text); border: none; border-radius: 50%; width: 34px; height: 34px; font-size: 15px; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+
+  .empty { text-align: center; padding: 40px 20px; color: var(--hint); font-size: 14px; }
+  .loading { text-align: center; padding: 40px; color: var(--hint); }
+  .spinner { display: inline-block; width: 24px; height: 24px; border: 2px solid rgba(0,0,0,0.1); border-top-color: var(--btn); border-radius: 50%; animation: spin 0.7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div>
+    <div class="topbar-title">TaskFlow</div>
+    <div class="topbar-sub" id="task-count">Загрузка...</div>
+  </div>
+  <button class="btn-add" onclick="openCreateModal()">+ Задача</button>
+</div>
+
+<div class="tabs">
+  <div class="tab active" onclick="switchView('kanban', this)">Kanban</div>
+  <div class="tab" onclick="switchView('list', this)">Список</div>
+  <div class="tab" onclick="switchView('my', this)">Мои задачи</div>
+</div>
+
+<div id="view-kanban" class="kanban"></div>
+<div id="view-list" class="list-view" style="display:none;"></div>
+<div id="view-my" class="list-view" style="display:none;"></div>
+
+<!-- Create Modal -->
+<div class="modal-overlay" id="create-modal" onclick="closeOnOverlay(event,'create-modal')">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <span class="modal-title">Новая задача</span>
+      <button class="modal-close" onclick="closeModal('create-modal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div>
+        <div class="field-label">Название</div>
+        <input id="new-title" type="text" class="field-input" placeholder="Что нужно сделать?" />
+      </div>
+      <div>
+        <div class="field-label">Описание</div>
+        <textarea id="new-desc" class="field-textarea" placeholder="Детали..."></textarea>
+      </div>
+      <div class="field-row">
+        <div>
+          <div class="field-label">Приоритет</div>
+          <select id="new-priority" class="field-select">
+            <option value="high">🔴 Высокий</option>
+            <option value="medium" selected>🟡 Средний</option>
+            <option value="low">🟢 Низкий</option>
+          </select>
+        </div>
+        <div>
+          <div class="field-label">Срок</div>
+          <input id="new-due" type="date" class="field-input" />
+        </div>
+      </div>
+      <div>
+        <div class="field-label">Исполнитель</div>
+        <select id="new-assignee" class="field-select">
+          <option value="">— Не назначен —</option>
+        </select>
+      </div>
+      <div class="tg-note">🔔 Исполнитель получит уведомление в Telegram при назначении и за день до срока</div>
+      <button class="btn-submit" onclick="createTask()">Создать задачу</button>
+    </div>
+  </div>
+</div>
+
+<!-- Detail Modal -->
+<div class="modal-overlay" id="detail-modal" onclick="closeOnOverlay(event,'detail-modal')">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <span class="modal-title" id="detail-title">Задача</span>
+      <button class="modal-close" onclick="closeModal('detail-modal')">×</button>
+    </div>
+    <div class="modal-body" id="detail-body"></div>
+  </div>
+</div>
+
+<script>
+const tg = window.Telegram?.WebApp;
+if (tg) { tg.ready(); tg.expand(); }
+
+const API = 'http://localhost:8000';  // Заменяется при деплое
+const params = new URLSearchParams(location.search);
+const MY_TG_ID = parseInt(params.get('user_id') || '0');
+
+let allTasks = [];
+let allUsers = [];
+let currentView = 'kanban';
+
+const STATUS_LABEL = { todo: 'To Do', in_progress: 'В работе', review: 'Ревью', done: 'Готово' };
+const PRIORITY_LABEL = { high: '🔴 Высокий', medium: '🟡 Средний', low: '🟢 Низкий' };
+const COLS = [
+  { key: 'todo', label: 'To Do' },
+  { key: 'in_progress', label: 'In Progress' },
+  { key: 'review', label: 'Review' },
+  { key: 'done', label: 'Done' },
+];
+
+async function fetchTasks() {
+  const r = await fetch(`${API}/tasks/`);
+  allTasks = await r.json();
+}
+async function fetchUsers() {
+  const r = await fetch(`${API}/users/`);
+  allUsers = await r.json();
+}
+
+function initials(name) {
+  return name.split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
+}
+
+function isOverdue(due) {
+  if (!due) return false;
+  return new Date(due) < new Date();
+}
+
+function renderKanban() {
+  const el = document.getElementById('view-kanban');
+  el.innerHTML = '';
+  COLS.forEach(col => {
+    const tasks = allTasks.filter(t => t.status === col.key);
+    const colEl = document.createElement('div');
+    colEl.className = 'col';
+    colEl.innerHTML = `
+      <div class="col-head">
+        <span>${col.label}</span>
+        <span class="col-count">${tasks.length}</span>
+      </div>
+      <div class="col-cards" id="col-${col.key}"></div>
+      <div class="add-card" onclick="openCreateModal()">+ Добавить</div>
+    `;
+    el.appendChild(colEl);
+    const cardsEl = colEl.querySelector(`#col-${col.key}`);
+    tasks.forEach(task => {
+      const card = document.createElement('div');
+      card.className = 'card' + (task.status === 'done' ? ' done' : '');
+      card.onclick = () => openDetail(task);
+      const due = task.due_date ? task.due_date.slice(0,10) : null;
+      const overdue = isOverdue(due) && task.status !== 'done';
+      card.innerHTML = `
+        <div class="card-title">${task.title}</div>
+        <div class="card-meta">
+          <span class="badge badge-${task.priority}">${PRIORITY_LABEL[task.priority]}</span>
+          ${due ? `<span class="due${overdue?' overdue':''}">${due}</span>` : ''}
+          ${task.assignee ? `<div class="avatar">${initials(task.assignee.full_name)}</div>` : ''}
+        </div>
+      `;
+      cardsEl.appendChild(card);
+    });
+  });
+}
+
+function renderList(tasks, container) {
+  const el = document.getElementById(container);
+  el.innerHTML = '';
+  if (!tasks.length) { el.innerHTML = '<div class="empty">Задач нет</div>'; return; }
+  tasks.forEach(task => {
+    const item = document.createElement('div');
+    item.className = 'list-item';
+    item.onclick = () => openDetail(task);
+    const due = task.due_date ? task.due_date.slice(0,10) : '—';
+    const overdue = isOverdue(task.due_date) && task.status !== 'done';
+    item.innerHTML = `
+      <div class="prio-dot ${task.priority}"></div>
+      <div class="list-info">
+        <div class="list-title">${task.title}</div>
+        <div class="list-sub${overdue?' overdue':''}">Срок: ${due} · ${task.assignee?.full_name || 'Не назначен'}</div>
+      </div>
+      <span class="status-pill s-${task.status}">${STATUS_LABEL[task.status]}</span>
+    `;
+    el.appendChild(item);
+  });
+}
+
+function renderAll() {
+  document.getElementById('task-count').textContent = `${allTasks.length} задач`;
+  renderKanban();
+  renderList(allTasks, 'view-list');
+  const myTasks = MY_TG_ID ? allTasks.filter(t => t.assignee?.telegram_id === MY_TG_ID) : allTasks;
+  renderList(myTasks, 'view-my');
+
+  const assigneeEl = document.getElementById('new-assignee');
+  if (assigneeEl) {
+    assigneeEl.innerHTML = '<option value="">— Не назначен —</option>' +
+      allUsers.map(u => `<option value="${u.telegram_id}">${u.full_name}</option>`).join('');
+  }
+}
+
+function switchView(view, el) {
+  currentView = view;
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  ['kanban','list','my'].forEach(v => {
+    document.getElementById(`view-${v}`).style.display = v === view ? (v === 'kanban' ? 'flex' : 'block') : 'none';
+  });
+}
+
+function openCreateModal() {
+  document.getElementById('create-modal').classList.add('open');
+}
+
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+function closeOnOverlay(e, id) { if (e.target === document.getElementById(id)) closeModal(id); }
+
+async function createTask() {
+  const title = document.getElementById('new-title').value.trim();
+  if (!title) { alert('Введи название задачи'); return; }
+  const body = {
+    title,
+    description: document.getElementById('new-desc').value.trim() || null,
+    priority: document.getElementById('new-priority').value,
+    due_date: document.getElementById('new-due').value ? new Date(document.getElementById('new-due').value).toISOString() : null,
+    creator_telegram_id: MY_TG_ID || allUsers[0]?.telegram_id,
+    assignee_telegram_id: document.getElementById('new-assignee').value ? parseInt(document.getElementById('new-assignee').value) : null,
+  };
+  await fetch(`${API}/tasks/`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  closeModal('create-modal');
+  document.getElementById('new-title').value = '';
+  document.getElementById('new-desc').value = '';
+  await fetchTasks();
+  renderAll();
+  if (tg) tg.HapticFeedback.notificationOccurred('success');
+}
+
+async function openDetail(task) {
+  document.getElementById('detail-title').textContent = task.title;
+  const body = document.getElementById('detail-body');
+  const due = task.due_date ? task.due_date.slice(0,10) : '—';
+  const comments = task.comments || [];
+
+  body.innerHTML = `
+    <div class="field-row">
+      <div>
+        <div class="field-label">Статус</div>
+        <select class="field-select" id="d-status" onchange="updateTask(${task.id}, 'status', this.value)">
+          ${Object.entries(STATUS_LABEL).map(([k,v]) => `<option value="${k}"${task.status===k?' selected':''}>${v}</option>`).join('')}
+        </select>
+      </div>
+      <div>
+        <div class="field-label">Приоритет</div>
+        <select class="field-select" onchange="updateTask(${task.id}, 'priority', this.value)">
+          ${Object.entries(PRIORITY_LABEL).map(([k,v]) => `<option value="${k}"${task.priority===k?' selected':''}>${v}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+    ${task.description ? `<div><div class="field-label">Описание</div><p style="font-size:14px;line-height:1.5;">${task.description}</p></div>` : ''}
+    <div class="field-row">
+      <div><div class="field-label">Исполнитель</div><p style="font-size:13px;">${task.assignee?.full_name || 'Не назначен'}</p></div>
+      <div><div class="field-label">Срок</div><p style="font-size:13px;">${due}</p></div>
+    </div>
+    <div class="comments">
+      <div class="comments-title">Комментарии · ${comments.length}</div>
+      ${comments.map(c => `
+        <div class="comment">
+          <div class="c-avatar">${initials(c.author.full_name)}</div>
+          <div class="c-bubble">
+            <div class="c-author">${c.author.full_name}</div>
+            <div class="c-text">${c.text}</div>
+          </div>
+        </div>
+      `).join('')}
+      <div class="c-input-row">
+        <input id="c-input-${task.id}" type="text" class="c-input" placeholder="Комментарий..." />
+        <button class="c-send" onclick="addComment(${task.id})">→</button>
+      </div>
+    </div>
+  `;
+  document.getElementById('detail-modal').classList.add('open');
+}
+
+async function updateTask(id, field, value) {
+  await fetch(`${API}/tasks/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ [field]: value }),
+  });
+  await fetchTasks();
+  renderAll();
+}
+
+async function addComment(taskId) {
+  const input = document.getElementById(`c-input-${taskId}`);
+  const text = input.value.trim();
+  if (!text || !MY_TG_ID) return;
+  await fetch(`${API}/tasks/${taskId}/comments`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, author_telegram_id: MY_TG_ID }),
+  });
+  input.value = '';
+  await fetchTasks();
+  const updated = allTasks.find(t => t.id === taskId);
+  if (updated) openDetail(updated);
+}
+
+async function init() {
+  document.getElementById('view-kanban').innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+  await Promise.all([fetchTasks(), fetchUsers()]);
+  renderAll();
+}
+
+init();
+</script>
+</body>
+</html>
